@@ -1,0 +1,6 @@
+All data and analysis assertions passed.
+Raw workbook rebuilt from Sheet1 and Sheet2; joined data match Final Sheet.
+One row per ISO3 and survey-window endpoint; no input values corrected.
+All model comparisons use identical countries within each comparison.
+All 157 panel ISO3 values match Natural Earth geometry keys.
+Main sample 140; education sensitivity sample 114; residual ranking 140.

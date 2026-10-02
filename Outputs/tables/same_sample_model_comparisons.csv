@@ -1,0 +1,4 @@
+"base_model","expanded_model","n","delta_r_squared","ordinary_nested_f_p"
+"baseline_2023","main_2023",140,0.0005113909579334,0.893370101752156
+"health_main_2023","health_expanded_2023",138,0.000922953253826408,0.520003199913214
+"education_base_2022","education_expanded_2022",114,0.0261912982844983,0.000780043008834365

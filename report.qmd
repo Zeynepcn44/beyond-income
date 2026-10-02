@@ -1,0 +1,560 @@
+---
+title: "Beyond income"
+subtitle: "Socioeconomic conditions and national life satisfaction"
+author:
+  - Zeynep Yildiz
+  - Tanishk Handa
+date: "11 September 2026"
+date-format: "D MMMM YYYY"
+lang: en
+format:
+  html:
+    theme: none
+    minimal: true
+    toc: false
+    toc-depth: 1
+    embed-resources: true
+    css: report.css
+    code-fold: true
+    highlight-style: none
+    code-summary: "Show R code"
+  typst:
+    echo: false
+    papersize: a4
+    mainfont: Arial
+    fontsize: 10.5pt
+    margin:
+      x: 19mm
+      y: 18mm
+    toc: false
+    number-sections: false
+    linkcolor: "#2878A1"
+execute:
+  echo: true
+  warning: false
+  message: false
+  cache: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+source("Scripts/run_analysis.R")
+num <- function(x, digits = 2) formatC(x, format = "f", digits = digits, big.mark = ",")
+pct <- function(x, digits = 1) paste0(num(100 * x, digits), "%")
+tbl <- function(x, digits = 2) knitr::kable(x, format = "pipe", digits = digits, row.names = FALSE)
+image_plot <- function(name) knitr::include_graphics(paste0("Outputs/figures/", name, ".png"))
+perf <- models$performance
+base_perf <- perf[perf$model == "baseline_2023", ]
+main_perf <- perf[perf$model == "main_2023", ]
+ranked <- models$residual_ranking
+```
+
+# Executive summary
+
+**Research question.** Which socioeconomic conditions are associated with national life satisfaction, and what distinguishes countries whose life satisfaction is substantially above or below what their income level would predict?
+
+**Client.** A hypothetical international well-being observatory needs a transparent country-comparison tool. The objective is to identify useful associations and countries worth investigating, not to estimate the effects of a policy intervention.
+
+The analysis combines World Happiness Report (WHR) life evaluations with World Bank socioeconomic indicators. It covers **1,173 country-window observations, 157 countries and eight window endpoints, 2016-2023**. The primary model uses the latest available common cross-section: **140 countries in 2023**.
+
+Three findings answer the question:
+
+1. **Income is the clearest measured correlate.** Log GDP per capita explains `r pct(base_perf$r_squared)` of the cross-country variation. Doubling GDP per capita is associated with about `r num(coef(models$models$baseline_2023)["log_gdp"] * log(2))` additional life-satisfaction points in the simple model.
+2. **Several plausible indicators contain overlapping information.** Life expectancy, health expenditure and urbanization have positive bivariate relationships with the outcome. Adding life expectancy and urbanization to income changes R-squared only from `r num(100 * base_perf$r_squared, 2)`% to `r num(100 * main_perf$r_squared, 2)`%. This does not show that health or urban development is unimportant; it shows that these measures add little distinct explanatory information in this specification.
+3. **Income does not determine a country's score.** Seven countries lie at least one point above the income-only benchmark, and nine lie at least one point below it. These residuals identify follow-up cases. They do not identify the unmeasured mechanisms causing the differences.
+
+An education-spending sensitivity analysis for 2022 suggests a positive additional association, but its smaller, selected sample prevents a universal conclusion. Interactive and static maps make the observed scores and income-adjusted differences accessible to the client.
+
+**Reading guide.** Data and quality checks come first, followed by distributions and trends, variable selection, simple models, residual comparisons, the mapping Chapter of choice, and the final interpretation. Detailed tables and all executable R code accompany the report.
+
+{{< pagebreak >}}
+
+# 1. Data, definitions and the reproducible join
+
+The supplied `Combined_fixed.xlsx` contains three sheets. It preserves two substantive sources and their combined view. A separate Natural Earth GeoJSON file supplies country polygons.
+
+```{r}
+tbl(data.frame(Sheet = quality$sheets$sheet, Rows = quality$sheets$rows,
+               Columns = quality$sheets$columns))
+```
+
+`Sheet1` contains WHR life evaluations, ranks, uncertainty whiskers and decomposition fields. `Sheet2` contains World Bank indicators. `Final Sheet` has **23 original columns**: identifiers and geography, the outcome and its uncertainty, seven decomposition fields, and five socioeconomic indicators. The complete original-to-short-name dictionary and column types are in `Outputs/tables/column_profile.csv`.
+
+**Preparation.** Import all cells as text, recognize explicit missing-value markers, rename by a checked name dictionary, and convert numeric fields with a check for newly introduced missingness. Restrict the two sources to endpoints 2016-2023. Check unique ISO3-year keys before joining. Country names are display labels, not join keys. The actual R join is:
+
+```r
+joined <- merge(whr, wdi,
+                by = c("iso3", "year"),
+                all = FALSE, sort = FALSE)
+```
+
+The inner join retains observations available in both substantive sources. Sixteen WHR rows for Kosovo and Taiwan have no matching World Bank row in the supplied sheets. Unmatched records from both sources are exported for inspection. The geography metadata already supplied in the combined view are added by ISO3. Their original extraction source was not documented. The rebuilt 1,173-row result is checked against **every original column and value** of `Final Sheet`. Log GDP and log health expenditure are added only after checking that non-missing inputs are positive.
+
+**Time definition matters.** The supplied `year` is the **survey-window ending year**, not the publication year. For example, 2016 corresponds to the 2014-2016 window in WHR 2017; 2023 corresponds to 2021-2023 in WHR 2024. A country may have surveys in only part of a window. Pairing a window average with the endpoint year's World Bank indicator is an approximation. Adjacent WHR windows overlap. [1, 2]
+
+The outcome is a national average of survey life evaluations on a 0-10 scale. GDP is **current US dollars per person**, not purchasing-power-adjusted GDP. Health spending is per person in **current PPP international dollars**. Education spending is **government expenditure as a share of GDP**, not educational attainment. These units are not interchangeable. [2, 3]
+
+{{< pagebreak >}}
+
+# 2. Data quality before interpretation
+
+There are **no duplicate country-year keys** in the prepared panel, and the country identifiers match the map geometry. All observed outcome scores are within 0-10. Where both uncertainty whiskers exist, they bracket the score. The data are unbalanced: annual country counts range from 135 to 153; only **131 countries appear in all eight windows**.
+
+```{r}
+#| out-width: 100%
+image_plot("01_missingness")
+```
+
+**Missingness determines the design.** GDP is missing in 8 rows, health expenditure in 14, and education expenditure in 215. In 2023, education is available for only 78 of 141 countries. It is therefore a separate 2022 sensitivity analysis, where coverage is better, rather than a compulsory main-model variable. Each analysis uses its stated complete-case sample; no missing value is replaced by zero or imputed.
+
+**Unusual does not mean erroneous.** Source checks against the official World Bank API confirmed the following values exactly on 11 September 2026. They are retained. Source agreement verifies provenance, not the independent validity of the underlying demographic or fiscal estimate. None enters the 2023 main model or 2022 education model. The API responses and decisions are included in `Data/source_audit`. [4]
+
+| Country and year | Flagged measurement | Decision |
+|:--|:--|:--|
+| Central African Republic, 2019 | Life expectancy: 31.530 years | Matches WDI; retain |
+| South Sudan, 2016 / 2017 | Life expectancy: 36.720 / 35.351 years | Matches WDI; retain |
+| Somalia, 2018 | Education spending: 0.00000401% of GDP | Matches WDI; retain |
+
+**WHR decomposition is not the outcome's construction.** The outcome is the survey mean. The seven supplied decomposition fields, including Dystopia plus residual, approximately sum to it: the largest difference is `r num(quality$decomposition$max_absolute_difference, 3)` points over `r quality$decomposition$complete_rows` complete rows, consistent with rounding. We do not use these model-derived contributions as independent socioeconomic measurements. Early decomposition and whisker fields were published by WHR but are missing from this workbook; the original import cause is unknown. [1]
+
+{{< pagebreak >}}
+
+# 3. The distribution of national life satisfaction
+
+```{r}
+#| out-width: 100%
+image_plot("12_distribution")
+```
+
+Across all `r format(nrow(d), big.mark = ",")` country-windows the mean score is `r num(mean(d$life_sat))` and the median is `r num(median(d$life_sat))`, so the distribution is close to symmetric and the outcome itself needs no transformation. Two features stand out. The curve has **two peaks**, near 5.2 and 6.0, and there is a thin left tail with a few isolated observations below 3. Section 6 returns to the two peaks and shows that they correspond to income groups rather than to any single group of countries.
+
+```{r}
+#| out-width: 100%
+image_plot("02_continent_distribution")
+```
+
+The points reveal variation within regions that a continent mean would hide. Boxplots summarize the median and middle half of the observations; every available country is also shown. These are country-level distributions, not distributions of individual residents' happiness.
+
+**2023 descriptive statistics.** Sample sizes differ because missingness is variable-specific. Spending variables are skewed, so the median is useful alongside the mean and full observed range.
+
+```{r}
+ds <- visuals$descriptive
+ds$variable <- c("Life satisfaction (0-10)", "GDP per capita (USD)",
+  "Life expectancy (years)", "Health spending (PPP intl. dollars)",
+  "Education spending (% GDP)", "Urban population (%)")
+tbl(data.frame(Variable = ds$variable, n = ds$n, Mean = num(ds$mean, 1),
+               Median = num(ds$median, 1), Min = num(ds$min, 1), Max = num(ds$max, 1)))
+```
+
+Across the 141 countries, the mean score is `r num(mean(d$life_sat[d$year == 2023]))` and the median is `r num(median(d$life_sat[d$year == 2023]))`. The range is `r num(min(d$life_sat[d$year == 2023]))` to `r num(max(d$life_sat[d$year == 2023]))`. Regional distributions are useful context, but their differences do not establish that geography itself explains well-being.
+
+```{r}
+#| out-width: 100%
+image_plot("13_top_bottom")
+```
+
+Naming the countries at each end makes the range concrete. Nine of the fifteen highest ranked countries in 2023 are European and the top four are Nordic, but Israel, Costa Rica and Kuwait also appear. Costa Rica is a middle-income country that still ranks twelfth, which is an early example of the income-adjusted pattern examined in section 11. At the other end, eleven of the fifteen lowest ranked countries are African, with scores between 3.19 and 3.89. Lebanon and Afghanistan lie clearly below that group and look like separate cases rather than part of a continuous tail.
+
+{{< pagebreak >}}
+
+# 4. Time trends without changing the country mix
+
+```{r}
+#| out-width: 95%
+image_plot("03_time_trends")
+```
+
+The upper panel distinguishes the changing annual sample from the same 131 countries throughout. In that balanced set, the unweighted mean changes from `r num(visuals$trends$balanced_mean[visuals$trends$year == 2016])` to `r num(visuals$trends$balanced_mean[visuals$trends$year == 2023])`. These are **unweighted country means**, not population-weighted global well-being. The upper scale makes a small aggregate change visible; regional panels use a common 0-10 scale. Holding the sample fixed removes composition changes, not measurement error or other confounding.
+
+{{< pagebreak >}}
+
+# 5. Which countries changed most?
+
+```{r}
+#| out-width: 100%
+image_plot("04_endpoint_changes")
+```
+
+This comparison uses the **137 countries observed at both endpoints**. It compares two survey windows, not single-year happiness measurements. Country identity is matched using ISO3 even if a display name changes.
+
+The largest increase is `r visuals$endpoint$country[which.max(visuals$endpoint$change)]` (`r num(max(visuals$endpoint$change))` points). The largest decrease is `r visuals$endpoint$country[which.min(visuals$endpoint$change)]` (`r num(min(visuals$endpoint$change))` points). These observations identify cases for contextual research. They do not demonstrate that a particular policy, conflict or economic event caused the change.
+
+```{r}
+#| out-width: 100%
+image_plot("15_trajectories")
+```
+
+Plotting every country path shows why the global average moves so little. Serbia, Armenia and Guinea rise steadily, Sierra Leone declines throughout, Lebanon drops sharply after 2020 and Afghanistan falls continuously. The six highlighted countries were selected by the size of their change between the two endpoints, not chosen by hand. The workbook contains no information that would explain any individual path, so none is offered here.
+
+**Why no trend significance test?** Adjacent outcome windows overlap, each country appears repeatedly, and the available source does not provide a full sampling-covariance structure. Plotting the observed trajectories is informative; treating all 1,173 rows as independent annual survey results would overstate precision. The main regression therefore uses one cross-section.
+
+The endpoint comparison also answers a different question from the later income-adjusted ranking. A country can improve over time while still lying below its income benchmark, or remain stable while lying above it.
+
+{{< pagebreak >}}
+
+# 6. GDP and life satisfaction: why use log income?
+
+```{r}
+#| out-width: 100%
+image_plot("05_gdp_relationship")
+```
+
+**Hypothesis 1:** countries with higher income tend to report higher life satisfaction, with smaller score differences for the same dollar increment at higher income levels.
+
+The raw-dollar plot is strongly right-skewed. A logarithmic transformation spreads out lower-income countries and expresses income differences proportionally. Both panels show the same 140 countries and use the same outcome scale. No logarithm is applied to a missing or non-positive GDP value.
+
+```{r}
+qq <- d[!is.na(d$gdp_pc), ]
+q_means <- tapply(qq$life_sat, dplyr::ntile(qq$gdp_pc, 4), mean)
+```
+
+```{r}
+#| out-width: 100%
+image_plot("14_income_groups")
+```
+
+Splitting countries into four income groups also answers the question raised in section 3. Each group has a single peak, and the peaks sit at different places on the scale: mean life satisfaction rises from `r num(q_means[1])` in the lowest income quarter to `r num(q_means[4])` in the highest. The two peaks in the overall distribution are therefore a consequence of combining different income groups, not a feature of any one group. This describes the observed distribution; it does not show that income causes the pattern.
+
+The explicit baseline is:
+
+```r
+baseline_2023 <- lm(life_sat ~ log_gdp, data = main_data)
+```
+
+It estimates a log-income slope of `r num(coef(models$models$baseline_2023)["log_gdp"], 3)`. A doubling of GDP is associated with `r num(coef(models$models$baseline_2023)["log_gdp"] * log(2), 3)` points because a doubling changes natural-log GDP by `log(2)`. This is a cross-country association, not a forecast of the happiness gain from doubling a country's GDP.
+
+The model explains `r pct(base_perf$r_squared)` of observed variation, leaving `r pct(1 - base_perf$r_squared)` unexplained. It is deliberately simple and is the reference for the residual ranking. Current-US-dollar GDP reflects exchange rates and price-level differences; a PPP measure would be a valuable future robustness check, but would be a different indicator and is not substituted silently. [3]
+
+{{< pagebreak >}}
+
+# 7. Choosing variables: relevance, overlap and coverage
+
+```{r}
+#| out-width: 100%
+image_plot("06_correlations")
+```
+
+The heatmap uses the 2023 cross-section, avoiding a mixture of within- and between-country variation. Correlations are pairwise complete; the accompanying CSV gives the sample size for every pair. Correlation is a screening description, not a causal test or an automatic variable-selection rule.
+
+| Indicator | Analytical role and reason |
+|:--|:--|
+| Log GDP per capita | Baseline resource measure; broad coverage and strong association |
+| Life expectancy | Main model; a distinct health-outcome concept, despite overlap with income |
+| Urban population share | Main model; settlement structure and access context, broad coverage |
+| Log health expenditure | Sensitivity; very strong overlap with GDP (`r num(visuals$correlations["log_gdp", "log_health"])`) |
+| Education expenditure | 2022 sensitivity; relevant fiscal input, but weak 2023 coverage |
+| WHR contributions / rank | Excluded predictors: fitted decomposition or an outcome-derived ordering |
+
+**Hypothesis 2:** health, urbanization and education may contain information beyond income. We test the incremental information with explicit, theory-led models, not by selecting only the smallest p-values. Important social constructs such as raw social support, freedom and trust are not present as independent raw measures in this workbook.
+
+{{< pagebreak >}}
+
+# 8. Socioeconomic relationships before adjustment
+
+```{r}
+#| out-width: 100%
+image_plot("07_socioeconomic_relationships")
+```
+
+These plots show each available country, with a fitted descriptive line and a common 0-10 vertical scale. The horizontal scales differ because the variables have different units. Life expectancy, health expenditure and urbanization all show positive bivariate relationships with life satisfaction. The education relationship is weaker in the 2023 available-case sample.
+
+**Why this is not enough to name the most important factors.** Richer countries also tend to have higher health spending, longer life expectancy and more urban populations. A variable can correlate strongly with happiness because it shares information with another variable. Pairwise correlation cannot separate that overlap. Nor can raw coefficients be compared directly when one is measured in years and another in percentage points.
+
+Education's relationship requires particular caution: available and missing cases are not interchangeable. In 2023, countries with education data have lower average life satisfaction and lower median GDP than those without it. The later sensitivity analysis reports its sample explicitly and uses 2022, where more countries are observed.
+
+The substantive question is therefore not simply “Which line slopes upward?” It is whether an indicator adds useful information to the income benchmark, and how much confidence this dataset supports in that conclusion.
+
+{{< pagebreak >}}
+
+# 9. Simple models: does anything add to income?
+
+Both models use exactly the same **140 countries in 2023**. This makes the comparison about predictors rather than changes in which countries are included.
+
+```r
+baseline_2023 <- lm(life_sat ~ log_gdp, data = main_data)
+main_2023     <- lm(life_sat ~ log_gdp + life_exp + urban_pct,
+                    data = main_data)
+```
+
+```{r}
+mp <- perf[perf$model %in% c("baseline_2023", "main_2023"), ]
+tbl(data.frame(Model = c("Income only", "Expanded main model"),
+  n = mp$n, `R-squared` = num(mp$r_squared, 3),
+  `Adjusted R-squared` = num(mp$adjusted_r_squared, 3),
+  `LOO RMSE` = num(mp$loo_rmse, 3), check.names = FALSE))
+```
+
+```{r}
+#| out-width: 100%
+image_plot("08_model_coefficients")
+```
+
+The coefficient plot rescales effects to readable changes: doubling income, ten extra years of life expectancy, or ten percentage points more urban population. Each association holds the other two predictors fixed. The intervals use heteroskedasticity-robust **HC3 standard errors**; this adjusts uncertainty, not the `lm()` estimates.
+
+**Result.** Income remains positively associated with life satisfaction. The life-expectancy and urbanization intervals include zero after adjustment. The increase in R-squared is only `r num(100 * (main_perf$r_squared - base_perf$r_squared), 3)` percentage points. Adjusted R-squared decreases, and leave-one-country-out RMSE rises from `r num(base_perf$loo_rmse, 3)` to `r num(main_perf$loo_rmse, 3)` points. The additional variables do not improve the main model's explanatory or predictive summary in a meaningful way.
+
+This does **not** prove a zero role for health or urban living. Measurement differences, confounding and collinearity may obscure separate relationships. With this data and this question, the simple income benchmark remains a useful reference.
+
+{{< pagebreak >}}
+
+# 10. Diagnostics and influence
+
+```{r}
+#| out-width: 100%
+image_plot("09_diagnostics")
+```
+
+The residual-vs-fitted and scale-location plots assess shape and changing spread; the Q-Q plot highlights departures from a normal residual pattern. Cook's distance combines residual size and leverage to identify observations that can affect the fit. Flags are prompts for investigation, not automatic deletion rules.
+
+The main model's BP-type variance check has approximate p = `r num(models$diagnostic_summary$bp_approx_p[models$diagnostic_summary$model == "main_2023"], 3)`, supporting the use of HC3 uncertainty estimates. HC3 does not remove omitted-variable bias, spatial dependence or measurement error, and its intervals remain approximate for this selected cross-country sample.
+
+Twelve countries exceed the descriptive Cook's-distance threshold of 4/n. A sensitivity fit excluding those flags still gives a positive income coefficient, while the other two intervals still include zero. The headline fit **retains all 140 eligible countries**. The exported influence tables identify the flagged observations and both sets of coefficients. Leave-one-country-out prediction errors were also checked against explicit refitting, rather than relying solely on a summary statistic.
+
+{{< pagebreak >}}
+
+# 11. Income-adjusted life satisfaction
+
+Define the income residual as **observed life satisfaction minus the score predicted by the GDP-only model**. Positive means above this income benchmark, not “better policy”; negative means below it, not a diagnosis of a country's problems.
+
+```{r}
+#| out-width: 100%
+image_plot("10_income_residuals")
+```
+
+The definition of “substantially” is transparent: **at least one score point above or below** the fitted benchmark. Seven countries meet the positive threshold and nine the negative threshold; 124 lie within it. The plot shows eight extremes on each side, so it is not the complete list of threshold cases. All 140 residuals are exported.
+
+These are descriptive in-sample rankings, not statistical tests of which countries are significantly over- or under-performing. Small rank differences should not be interpreted as meaningful distinctions. Income's association and the overall ordering are stable to leaving out one country at a time: the minimum rank correlation is `r num(models$rank_robustness$minimum_leave_one_out_rank_spearman, 3)`. This checks one form of influence, not all possible model choices.
+
+{{< pagebreak >}}
+
+# 12. What distinguishes the countries above and below?
+
+The extremes make the benchmark concrete. The table selects the three largest positive and three largest negative residuals; it is a **case-selection illustration**, not a representative sample or a causal comparison.
+
+```{r}
+cases <- rbind(head(ranked, 3), tail(ranked, 3))
+tbl(data.frame(Country = cases$country,
+  `GDP USD` = num(cases$gdp_pc, 0), Score = num(cases$life_sat),
+  Residual = num(cases$income_residual), `Life exp.` = num(cases$life_exp, 1),
+  `Urban %` = num(cases$urban_pct, 1),
+  check.names = FALSE))
+```
+
+Two distinctions are defensible from the analysis.
+
+First, these countries differ strongly in their observed scores **relative to the same fitted income relationship**. A country can have a modest absolute score and still lie above its income benchmark. Conversely, a relatively wealthy country can lie below the benchmark without having the world's lowest score. Absolute happiness ranks and income-adjusted ranks answer different questions.
+
+Second, the available health and urbanization indicators do **not clearly explain the remaining differences** after income is included. The main model's near-zero improvement is a result, not a reason to invent a story about the residuals. The workbook cannot directly test raw social support, institutions, perceived freedom or conflict exposure. WHR's model-derived contribution fields are not substitutes for independently measured versions of those variables.
+
+For example, Mozambique lies above its benchmark with life expectancy of 63.6 years and an urban share of 35.7%; Lebanon lies below with 77.8 years and 90.5% urbanization. These two cases illustrate why a positive residual is not simply a label for a healthier or more urban country. They do not establish a reverse association across the full sample.
+
+```{r}
+lat_chk <- read.csv("Outputs/tables/latitude_checks.csv")
+```
+
+```{r}
+#| out-width: 100%
+image_plot("16_latitude")
+```
+
+Geography is one candidate explanation that the supplied data can check directly. Countries further from the equator do report higher life satisfaction: the correlation with latitude is `r num(lat_chk$latitude_vs_score)`. Latitude is also correlated with income (`r num(lat_chk$latitude_vs_log_gdp)`), and once income is accounted for the pattern almost disappears, with a correlation of only `r num(lat_chk$latitude_vs_residual)` between latitude and the income residual. The apparent latitude pattern is therefore largely an income pattern. This result applies to latitude alone and says nothing about geography in general.
+
+**Recommendation for the client.** Use the residual ranking to select countries for follow-up qualitative or data-collection work, preferably comparing countries with similar income and regional context. Collect independent measures of support, institutions, inequality and security before attributing the differences to them. Do not allocate policy credit or blame from the ranking alone.
+
+**Hypothesis 3:** income leaves substantial cross-country differences. The residuals support this descriptive proposition, but the present dataset cannot conclusively identify the mechanisms distinguishing all above- and below-benchmark countries.
+
+{{< pagebreak >}}
+
+# 13. Chapter of choice
+
+**Interactive geographic communication with `sf` and `leaflet`.** The additional task is to turn country statistics into a layered geographic explorer, using ISO3 joins, polygon preparation, an interactive band filter, custom popups and small time profiles. This is a data-display task, not a more complex model. [5-7]
+
+```{r}
+#| out-width: 100%
+image_plot("11_maps")
+```
+
+The static views use a Robinson projection. Grey is missing, never zero. The residual scale is symmetric around zero. Natural Earth features are dissolved by country key before joining: Australia's multiple features therefore cannot duplicate a statistical observation. All 157 panel countries match a geometry; 141 scores and 140 residuals are mapped for 2023. Small states may be hard to see at this scale.
+
+::: {.interactive-only}
+```{r}
+#| eval: !expr knitr::is_html_output()
+explorer
+```
+:::
+
+{{< pagebreak >}}
+
+# 14. How to use the country explorer
+
+Open the HTML report or `Outputs/country_explorer.html`. The map has two kinds of control. The **residual bands** are ticked on by default and show every country coloured by how far it sits from its income prediction. Unticking a band hides exactly those countries, so the reader can look at the seven clear over-performers or the nine clear under-performers on their own, without the other 124 countries competing for attention. The separate **Life satisfaction (all countries)** layer can be ticked on to see the raw 0-10 score instead. Hover to identify a country, then click it to open its pop-up.
+
+**What the two layers show.** The life-satisfaction layer is the unadjusted national average for the 2023 window, on a light-to-dark scale from 0 to 10. The residual layers show the same countries coloured by the income residual from the baseline model of section 11: the score a country actually reports minus the score its log GDP per capita predicts. Green means a country reports more satisfaction than its income predicts, red means less, and near-white means close to the prediction. Grey is missing data, never zero.
+
+**How the three bands are defined.** A country is placed in a band using the same transparent one-point threshold as the ranking table in section 11: at least 1 point above its income prediction (7 countries), within 1 point of it (124 countries), or at least 1 point below it (9 countries). The 96 territories with no comparable data form a fourth group so that missing information stays visible instead of quietly disappearing. The threshold is descriptive and is not a significance test.
+
+**Where the code lives.** The mapping work is split across two scripts. `Scripts/03_visualise.R` prepares the country shapes once and reuses them for both the static maps and the explorer. `Scripts/04_interactive_map.R` then builds the interactive widget from those shapes. The excerpts below are shortened versions of the real code; the scripts are longer because they also handle geometry simplification, legends, missing values and file export.
+
+**Step 1: prepare the geographic data** (`Scripts/03_visualise.R`). Natural Earth stores some countries as several separate shapes, so all shapes belonging to one country are merged into a single outline. The country statistics are then attached using the ISO3 code, which is the same key used everywhere else in the project. The `band` column comes straight from `Scripts/02_models.R`, so the map and the ranking table can never disagree about which country is in which band.
+
+```{r}
+#| eval: false
+#| echo: true
+world <- sf::st_read("Data/ne_50m_admin_0_countries.geojson") |>
+  dplyr::group_by(ISO_A3_EH) |>
+  dplyr::summarise(geometry = sf::st_union(geometry)) |>
+  dplyr::left_join(
+    residual_ranking |>
+      dplyr::select(iso3, gdp_pc, income_predicted, income_residual, band),
+    by = c("ISO_A3_EH" = "iso3"))
+```
+
+**Step 2: turn numbers into colours** (`Scripts/04_interactive_map.R`). `colorNumeric()` builds a function that converts a value into a colour. The score uses a single-direction scale from light to dark; the residual uses a two-direction scale because it has a meaningful zero. Countries without data are grey rather than white, so that missing information is visible.
+
+```{r}
+#| eval: false
+#| echo: true
+pal_score <- leaflet::colorNumeric(c("#E4EFF5", "#165376"),
+                                   domain = c(0, 10), na.color = "#D8DFE5")
+pal_resid <- leaflet::colorNumeric(c("#B74B58", "#FAFAF7", "#138A80"),
+                                   domain = c(-2.5, 2.5), na.color = "#D8DFE5")
+```
+
+**Step 3: draw one map layer per band.** This is the whole filter. Every country already carries its `band` label, so the countries are split into four groups and each group is drawn as its own layer with its own `group` name. Because `map_data[keep, ]` selects only the countries in that band, a layer contains exactly those countries and nothing else.
+
+```{r}
+#| eval: false
+#| echo: true
+band <- ifelse(is.na(map_data$band), "No comparable data", map_data$band)
+band_order <- c("At least 1 point above income prediction",
+                "Within 1 point of income prediction",
+                "At least 1 point below income prediction",
+                "No comparable data")
+for (b in band_order) {
+  keep <- band == b
+  widget <- leaflet::addPolygons(widget, data = map_data[keep, ],
+    fillColor = ~pal_resid(income_residual), group = b, popup = popups[keep])
+}
+```
+
+**Step 4: let the reader switch the layers on and off.** `addLayersControl()` turns the `group` names into the tick boxes shown on the map, one per band plus the life-satisfaction layer. Ticking a box adds that layer back and unticking it removes it, which is what makes the bands work as a filter. `hideGroup()` starts the score layer switched off, so the map opens on the income-adjusted view that answers our research question. `addLegend()` adds one colour key per scale.
+
+```{r}
+#| eval: false
+#| echo: true
+widget |>
+  leaflet::addLayersControl(
+    overlayGroups = c(band_order, "Life satisfaction (all countries)"),
+    options = leaflet::layersControlOptions(collapsed = FALSE)) |>
+  leaflet::addLegend(pal = pal_resid, values = c(-2.5, 2.5),
+                     title = "Income residual (points)") |>
+  leaflet::hideGroup("Life satisfaction (all countries)")
+```
+
+**Step 5: build the pop-up and save the file.** Each country gets a short block of HTML text that appears when it is clicked. It contains the country name, its life-satisfaction score, its GDP per capita, its income-predicted score and its income residual, followed by a small line drawing of the 2016-2023 path on a common 0-10 scale, written directly as an SVG image so that it fits inside the pop-up. A short note repeats that the windows overlap and that residuals are descriptive. Finally `saveWidget()` writes one standalone file.
+
+```{r}
+#| eval: false
+#| echo: true
+htmlwidgets::saveWidget(widget, file = "Outputs/country_explorer.html",
+                        selfcontained = TRUE)
+```
+
+In short: `sf` handles the shapes and projections, `leaflet` creates the interactive map, and `htmlwidgets` packages it for the browser. The result needs no internet connection, no map-tile server and no API key. [5-7]
+
+**Design choices.** The PDF contains static equivalents so the substantive analysis is readable without interaction. The interactive view uses a web-map projection, which distorts area toward the poles; the static overview uses Robinson. Colours encode national averages, not within-country differences. Boundaries are cartographic context and do not imply a position on disputed territories. The popup line connects available observations and is not an interpolation model.
+
+**Why this is useful for our research question.** Our question is whether national life satisfaction is explained by income alone. The filter turns that question into something the reader can act on directly: showing only the two outer bands leaves exactly the countries that income does not explain well, and hiding them leaves the large majority that income does explain to within a point. Seeing that the middle band holds 124 of 140 countries, while the exceptions are scattered rather than concentrated in one region, is the same conclusion the models reach, shown in a form a non-technical reader can check for themselves. The pop-up then keeps the absolute score, the income benchmark and the time trajectory in one view, which makes it harder to confuse a high residual with a high absolute score. Visual clustering on the map is not itself a statistical test of spatial dependence.
+
+
+{{< pagebreak >}}
+
+# 15. Targeted sensitivity checks
+
+The purpose of these checks is to test whether the simple story depends on a defensible design choice, not to search for a winning model.
+
+**Health expenditure: overlap with income.** On the same 138 complete countries in 2023, the main model has R-squared `r num(perf$r_squared[perf$model == "health_main_2023"], 3)`; adding log health spending yields `r num(perf$r_squared[perf$model == "health_expanded_2023"], 3)`. Leave-one-out RMSE worsens. In that expanded model, the variance inflation factors are about 14.9 for GDP and 12.7 for health expenditure, indicating substantial redundancy. The higher R-squared of this 138-country sample cannot be compared directly with the 140-country baseline as evidence for health spending.
+
+**Education: a promising but selected-sample result.** Use 2022, with 114 complete countries, and compare two models on precisely those countries:
+
+```r
+education_base_2022     <- lm(life_sat ~ log_gdp + life_exp + urban_pct,
+                              data = education_data)
+education_expanded_2022 <- lm(life_sat ~ log_gdp + life_exp + urban_pct + educ_exp,
+                              data = education_data)
+```
+
+```{r}
+ep <- perf[perf$model %in% c("education_base_2022", "education_expanded_2022"), ]
+tbl(data.frame(Model = c("Income + life expectancy + urbanization", "Adds education expenditure"),
+  n = ep$n, `R-squared` = num(ep$r_squared, 3),
+  `LOO RMSE` = num(ep$loo_rmse, 3), check.names = FALSE))
+ec <- models$coefficients[models$coefficients$model == "education_expanded_2022" & models$coefficients$term == "educ_exp", ]
+```
+
+The education coefficient is `r num(ec$estimate, 3)` score points per additional percentage point of GDP spent, with HC3 95% interval [`r num(ec$hc3_ci_low, 3)`, `r num(ec$hc3_ci_high, 3)`]. This is conditional on income, life expectancy and urbanization, not an estimated return to a spending increase. Budget share is not school quality, years of education or spending per student.
+
+**Missingness is a substantive limitation.** In 2023, countries with education data have mean life satisfaction about 5.18 and median GDP about US$3,883; countries without it have mean 5.93 and median GDP about US$23,979. The missingness is visibly selective. Using 2022 improves coverage, but it does not prove that the remaining missing cases are random.
+
+**Influence and ranking stability.** Removing one country at a time changes the income-only slope from `r num(models$rank_robustness$leave_one_out_slope_min, 3)` to `r num(models$rank_robustness$leave_one_out_slope_max, 3)`. The residual ordering remains very similar. The Cook-flag sensitivity also preserves the main qualitative conclusion. These checks cannot establish robustness to different income concepts, unmeasured confounders or other survey windows.
+
+{{< pagebreak >}}
+
+# 16. Conclusions and limitations
+
+**Answer to the research question.** National life satisfaction is strongly associated with income and positively correlated with several socioeconomic indicators. In the latest common cross-section, however, life expectancy and urbanization add almost no distinct information once log income is included. Health spending is highly redundant with GDP. Education spending shows a positive conditional association in a better-covered 2022 sensitivity sample, with a clear selection caveat.
+
+Countries differ substantially from their income-predicted scores. Those residual differences are real features of this fitted benchmark, but their causes are not established. The appropriate deliverable for the observatory is a transparent comparison and a set of follow-up cases, not a league table of policy effectiveness.
+
+**Limitations that affect interpretation:** national averages cannot support individual-level conclusions; observations come from selected countries rather than a random country sample; three-year survey outcomes are paired with annual economic indicators; overlapping windows limit annual trend interpretation; current-dollar GDP is not PPP income; missing education values are selective; and omitted variables, measurement error, reverse causality and spatial dependence remain possible. The original workbook extraction date was not recorded. Source verification on the audit date does not reconstruct that historical data vintage.
+
+## Reflection on generative AI
+
+We used ChatGPT and Claude as support tools during this project. They were most
+useful for four things: understanding unfamiliar R code, debugging errors when a
+script failed and the message was not obvious, exploring different ways of
+visualising the same variable, and improving the structure and wording of the
+report. For routine coding questions the answers were usually quick and correct.
+
+We did not accept any suggestion automatically. Everything was run in R, and the
+output was compared against the data itself and against the figures before it was
+kept. Several suggestions were rejected: some proposed far more complex code than
+this analysis needed, and some assumed a different project structure, so they did
+not fit the scripts we already had. A few suggested interpretations were too
+confident about what the numbers showed, and we rewrote them after checking the
+results ourselves.
+
+The main lesson was that generative AI is good at explaining and drafting, but
+the responsibility for whether a number or a claim is correct stays with us. It
+was a learning and support tool, not a replacement for our own analysis.
+
+{{< pagebreak >}}
+
+# 17. Reproducibility and sources
+
+The project contains the untouched input workbook and GeoJSON, the source audit, commented R scripts, this Quarto source, both report formats, the interactive map, the prepared data, and detailed result tables. Rendering starts from the raw workbook; the report does not depend on a manually updated RDS file.
+
+**The two report formats.** `report.pdf` is the static report submitted for assessment; it is 23 pages and contains static equivalents of every figure, including the maps. `report.html` is the same report with the interactive Chapter of choice embedded, so the country explorer and its residual-band filter can be used directly in the browser. Both are produced from this single `report.qmd` source.
+
+**Rebuild.** Install the listed R packages once using `Scripts/install_packages.R`. From the project folder, run `quarto render report.qmd --to typst` for the PDF and `quarto render report.qmd --to html` for the HTML. Quarto's bundled Typst engine produces the PDF without LaTeX, and the HTML embeds every figure and the interactive map in a single self-contained file. `Scripts/render_html.R` is kept only as a fallback for computers where Quarto's HTML step is blocked; it reproduces the same analysis and figures but without the foldable code sections. Actual package versions, R session information and assertion results are saved in `Outputs`.
+
+**Data ownership and provenance.** The supplied workbook and original analysis structure came from the partner handoff. This final version reconstructs the merge, extends the analysis and revises the reporting. Original input files have not been changed. World Bank source values are preserved even when flagged. The country and continent labels already in the workbook are retained as supplied.
+
+## References
+
+1. Helliwell, J. F., Layard, R., & Sachs, J. (eds.). *World Happiness Report 2017*, Chapter 2, especially Figure 2.2 and the discussion of survey scores and explanatory components. [Official chapter](https://files.worldhappiness.report/WHR17_Ch02.pdf).
+
+2. Helliwell, J. F. et al. *World Happiness Report 2024*, Chapter 2, “Happiness of the younger, the older, and those in between.” [Official chapter](https://www.worldhappiness.report/ed/2024/happiness-of-the-younger-the-older-and-those-in-between/). The source-audit mapping lists the intervening WHR editions.
+
+3. World Bank, *World Development Indicators*. Indicator definitions: [GDP per capita, NY.GDP.PCAP.CD](https://data.worldbank.org/indicator/NY.GDP.PCAP.CD); [life expectancy, SP.DYN.LE00.IN](https://data.worldbank.org/indicator/SP.DYN.LE00.IN); [health expenditure, SH.XPD.CHEX.PP.CD](https://data.worldbank.org/indicator/SH.XPD.CHEX.PP.CD); [education expenditure, SE.XPD.TOTL.GD.ZS](https://data.worldbank.org/indicator/SE.XPD.TOTL.GD.ZS); [urban population, SP.URB.TOTL.IN.ZS](https://data.worldbank.org/indicator/SP.URB.TOTL.IN.ZS).
+
+4. World Bank API source verification, retrieved 11 September 2026 (response update: 13 July 2026). [Central African Republic life expectancy](https://api.worldbank.org/v2/country/CAF/indicator/SP.DYN.LE00.IN?date=2016:2023&format=json&per_page=100); [South Sudan life expectancy](https://api.worldbank.org/v2/country/SSD/indicator/SP.DYN.LE00.IN?date=2016:2023&format=json&per_page=100); [Somalia education expenditure](https://api.worldbank.org/v2/country/SOM/indicator/SE.XPD.TOTL.GD.ZS?date=2018&format=json&per_page=100). Responses and checked values are archived locally.
+
+5. Natural Earth. *Admin 0 - Countries, 1:50m cultural vectors*. [Dataset documentation](https://www.naturalearthdata.com/downloads/50m-cultural-vectors/50m-admin-0-countries-2/). Country polygons supplied in the handoff; original download date unrecorded.
+
+6. Pebesma, E. et al. *sf: Simple Features for R*. [Package documentation](https://r-spatial.github.io/sf/articles/sf1.html).
+
+7. Cheng, J. et al. *leaflet for R*, choropleth vignette. [Package documentation](https://rstudio.github.io/leaflet/articles/choropleths.html). The geographic explorer adapts the documented polygon, popup, layer and legend workflow to this dataset.
+
+All tables and plots are calculations from the supplied data unless otherwise identified. Source and package documentation was checked during finalization; the historical workbook extraction date remains unknown.

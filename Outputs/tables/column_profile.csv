@@ -1,0 +1,24 @@
+"variable","original","type","missing","missing_pct"
+"year","Year","numeric",0,0
+"rank","Rank","numeric",0,0
+"country","Country name","character",0,0
+"continent","Continent","character",0,0
+"life_sat","Life evaluation (3-year average)","numeric",0,0
+"ci_lower","Lower whisker","numeric",458,39.0451832907076
+"ci_upper","Upper whisker","numeric",458,39.0451832907076
+"ex_gdp","Explained by: Log GDP per capita","numeric",461,39.3009377664109
+"ex_social","Explained by: Social support","numeric",461,39.3009377664109
+"ex_health_le","Explained by: Healthy life expectancy","numeric",462,39.386189258312
+"ex_freedom","Explained by: Freedom to make life choices","numeric",461,39.3009377664109
+"ex_generosity","Explained by: Generosity","numeric",461,39.3009377664109
+"ex_corruption","Explained by: Perceptions of corruption","numeric",461,39.3009377664109
+"ex_dystopia","Dystopia + residual","numeric",462,39.386189258312
+"iso3","ISO3","character",0,0
+"country_wb","Country Name","character",0,0
+"gdp_pc","GDP per capita (current US$)","numeric",8,0.682011935208866
+"life_exp","Life expectancy at birth, total (years)","numeric",0,0
+"health_exp","Current health expenditure per capita, PPP (current international $)","numeric",14,1.19352088661552
+"educ_exp","Government expenditure on education, total (% of GDP)","numeric",215,18.3290707587383
+"urban_pct","Urban population (% of total population)","numeric",0,0
+"longitude","longitude","numeric",0,0
+"latitude","latitude","numeric",0,0

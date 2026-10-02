@@ -1,0 +1,9 @@
+data_year,survey_window,report_edition,reference_country,local_life_evaluation,primary_source
+2016,2014-2016,2017,Norway,7.537,https://files.worldhappiness.report/WHR17_Ch02.pdf
+2017,2015-2017,2018,Finland,7.632,https://files.worldhappiness.report/WHR18_Ch02.pdf
+2018,2016-2018,2019,Finland,7.769,https://www.worldhappiness.report/ed/2019/changing-world-happiness/
+2019,2017-2019,2020,Finland,7.8087,https://www.worldhappiness.report/ed/2020/social-environments-for-world-happiness/
+2020,2018-2020,2021,Finland,7.842,https://www.worldhappiness.report/ed/2021/happiness-trust-and-deaths-under-covid-19/
+2021,2019-2021,2022,Finland,7.821,https://www.worldhappiness.report/ed/2022/happiness-benevolence-and-trust-during-covid-19-and-beyond/
+2022,2020-2022,2023,Finland,7.804,https://files.worldhappiness.report/WHR23_Ch02.pdf
+2023,2021-2023,2024,Finland,7.741,https://www.worldhappiness.report/ed/2024/happiness-of-the-younger-the-older-and-those-in-between/

@@ -1,0 +1,2 @@
+"n","original_gdp_slope","doubling_gdp_association","leave_one_out_slope_min","leave_one_out_slope_max","minimum_leave_one_out_rank_spearman","maximum_leave_one_out_rank_shift","press_vs_original_rank_spearman","press_maximum_rank_shift"
+140,0.66821019363746,0.46316801174122,0.648974431971156,0.680364896134155,0.998307493822571,6,0.999960639391223,2

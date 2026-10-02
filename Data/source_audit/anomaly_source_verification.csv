@@ -1,0 +1,5 @@
+iso3,year,indicator,original_value,official_value,source_updated,accessed,decision,url
+CAF,2019,SP.DYN.LE00.IN,31.53,31.53,2026-07-13,2026-09-11,retained; matches current official WDI source,https://api.worldbank.org/v2/country/CAF/indicator/SP.DYN.LE00.IN?date=2016:2023&format=json&per_page=100
+SSD,2017,SP.DYN.LE00.IN,35.351,35.351,2026-07-13,2026-09-11,retained; matches current official WDI source,https://api.worldbank.org/v2/country/SSD/indicator/SP.DYN.LE00.IN?date=2016:2023&format=json&per_page=100
+SSD,2016,SP.DYN.LE00.IN,36.72,36.72,2026-07-13,2026-09-11,retained; matches current official WDI source,https://api.worldbank.org/v2/country/SSD/indicator/SP.DYN.LE00.IN?date=2016:2023&format=json&per_page=100
+SOM,2018,SE.XPD.TOTL.GD.ZS,4.0099083430700003e-06,4.00990834307e-06,2026-07-13,2026-09-11,retained; matches current official WDI source,https://api.worldbank.org/v2/country/SOM/indicator/SE.XPD.TOTL.GD.ZS?date=2018&format=json&per_page=100

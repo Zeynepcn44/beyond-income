@@ -1,0 +1,15 @@
+# R
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# Quarto
+/.quarto/
+report.typ
+*_files/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
