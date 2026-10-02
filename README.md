@@ -47,8 +47,10 @@ scores. But once income is accounted for, the correlation with the residual drop
 
 ## Interactive map
 
-`Outputs/country_explorer.html` is a standalone Leaflet map — no server, no API key, works
-offline. Download it and open it in a browser.
+### ▶ [**Open the live country explorer**](https://zeynepcn44.github.io/beyond-income/)
+
+A standalone Leaflet map — no server, no tile provider, no API key. The same file
+(`Outputs/country_explorer.html`) also works offline if you download it.
 
 It has a **residual-band filter**: tick boxes switch the three groups on and off, so you can
 isolate the countries income fails to explain.
